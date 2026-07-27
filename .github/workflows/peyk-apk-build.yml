@@ -5,12 +5,12 @@ on:
     branches:
       - peyk-apk-build-20260727
     paths:
-      - "peyk-build/**"
+      - "peyk-build/parts/**"
       - ".github/workflows/peyk-apk-build.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-apk:
@@ -107,9 +107,29 @@ jobs:
           (cd TESLIM-APK && sha256sum *.apk *.jks > SHA256SUMS.txt)
 
       - name: Upload installable APK package
+        id: upload
         uses: actions/upload-artifact@v4
         with:
           name: RobotSepeti-Peyk-v2.3.0
           path: build-work/project/TESLIM-APK/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish artifact coordinates
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p peyk-build
+          cat > peyk-build/latest-artifact.json <<EOF
+          {
+            "run_id": "${GITHUB_RUN_ID}",
+            "artifact_id": "${{ steps.upload.outputs.artifact-id }}",
+            "artifact_name": "RobotSepeti-Peyk-v2.3.0",
+            "commit_sha": "${GITHUB_SHA}"
+          }
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add peyk-build/latest-artifact.json
+          git commit -m "chore: publish Peyk APK artifact coordinates [skip ci]"
+          git push origin HEAD:${GITHUB_REF_NAME}
