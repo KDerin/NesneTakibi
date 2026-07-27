@@ -1,0 +1,115 @@
+name: RobotSepeti Peyk APK Build
+
+on:
+  push:
+    branches:
+      - peyk-apk-build-20260727
+    paths:
+      - "peyk-build/**"
+      - ".github/workflows/peyk-apk-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Reconstruct and verify source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-work
+          cat peyk-build/parts/part-*.b64 | base64 --decode > build-work/RobotSepetiPeyk-v2.3.0-source.zip
+          echo "b54d539b298c885d14d5ef39c5db74867d7fef5fcbf002be8f943e1a64511c3f  build-work/RobotSepetiPeyk-v2.3.0-source.zip" | sha256sum -c -
+          mkdir -p build-work/project
+          unzip -q build-work/RobotSepetiPeyk-v2.3.0-source.zip -d build-work/project
+
+      - name: Generate RobotSepeti release certificate
+        shell: bash
+        working-directory: build-work/project
+        run: |
+          set -euo pipefail
+          STORE_PASSWORD="$(openssl rand -hex 16)"
+          KEY_PASSWORD="$STORE_PASSWORD"
+          keytool -genkeypair -v \
+            -keystore robotsepeti-peyk-release.jks \
+            -storepass "$STORE_PASSWORD" \
+            -keypass "$KEY_PASSWORD" \
+            -alias robotsepeti_peyk \
+            -keyalg RSA \
+            -keysize 4096 \
+            -validity 10000 \
+            -dname "CN=RobotSepeti, OU=Peyk, O=RobotSepeti, L=Istanbul, ST=Istanbul, C=TR"
+          cat > keystore.properties <<EOF
+          storeFile=robotsepeti-peyk-release.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=robotsepeti_peyk
+          keyPassword=$KEY_PASSWORD
+          EOF
+          cat > imza-bilgileri.txt <<EOF
+          ROBOTSEPETI PEYK ANDROID IMZA BILGILERI
+          =======================================
+          Surum: 2.3.0
+          Paket: com.robotsepeti.peyk
+          Keystore: robotsepeti-peyk-release.jks
+          Alias: robotsepeti_peyk
+          Store password: $STORE_PASSWORD
+          Key password: $KEY_PASSWORD
+
+          Bu dosya ve JKS gelecekteki APK guncellemeleri icin zorunludur.
+          Guvenli ve yedekli bir yerde saklayin; halka acik depoya koymayin.
+          EOF
+
+      - name: Build signed LAN and HTTPS APKs
+        working-directory: build-work/project
+        run: gradle --no-daemon --stacktrace assembleLanRelease assembleSecureRelease
+
+      - name: Verify signatures and prepare delivery
+        shell: bash
+        working-directory: build-work/project
+        run: |
+          set -euo pipefail
+          mkdir -p TESLIM-APK
+          cp app/build/outputs/apk/lan/release/app-lan-release.apk TESLIM-APK/RobotSepeti-Peyk-LAN-v2.3.0.apk
+          cp app/build/outputs/apk/secure/release/app-secure-release.apk TESLIM-APK/RobotSepeti-Peyk-HTTPS-v2.3.0.apk
+          cp robotsepeti-peyk-release.jks imza-bilgileri.txt TESLIM-APK/
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          "$APKSIGNER" verify --verbose --print-certs TESLIM-APK/RobotSepeti-Peyk-LAN-v2.3.0.apk > TESLIM-APK/LAN-IMZA-DOGRULAMA.txt
+          "$APKSIGNER" verify --verbose --print-certs TESLIM-APK/RobotSepeti-Peyk-HTTPS-v2.3.0.apk > TESLIM-APK/HTTPS-IMZA-DOGRULAMA.txt
+          keytool -printcert -jarfile TESLIM-APK/RobotSepeti-Peyk-LAN-v2.3.0.apk > TESLIM-APK/LAN-SERTIFIKA.txt
+          keytool -printcert -jarfile TESLIM-APK/RobotSepeti-Peyk-HTTPS-v2.3.0.apk > TESLIM-APK/HTTPS-SERTIFIKA.txt
+          (cd TESLIM-APK && sha256sum *.apk *.jks > SHA256SUMS.txt)
+
+      - name: Upload installable APK package
+        uses: actions/upload-artifact@v4
+        with:
+          name: RobotSepeti-Peyk-v2.3.0
+          path: build-work/project/TESLIM-APK/
+          if-no-files-found: error
+          retention-days: 30
