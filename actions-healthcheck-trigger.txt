@@ -1,0 +1,1 @@
+Trigger GitHub Actions healthcheck for RobotSepeti Peyk APK build.
