@@ -1,0 +1,8 @@
+{
+  "status": "failed",
+  "run_id": "30305988257",
+  "commit_sha": "cdec5a4280bd2aab31d50dcb2e88c64e753c794a",
+  "apk_artifact_id": null,
+  "log_artifact_id": "8668450621",
+  "log_tail": "yes: standard output: Broken pipe\nLoading package information...                                                  \nLoading local repository...                                                     \n[                                       ] 3% Loading local repository...        \n[                                       ] 3% Fetch remote repository...         \n[=                                      ] 3% Fetch remote repository...         \n[=                                      ] 4% Fetch remote repository...         \n[=                                      ] 5% Fetch remote repository...         \n[==                                     ] 5% Fetch remote repository...         \n[==                                     ] 6% Fetch remote repository...         \n[==                                     ] 7% Fetch remote repository...         \n[==                                     ] 7% Computing updates...               \n[===                                    ] 8% Computing updates...               \n[===                                    ] 10% Computing updates...              \n[=======================================] 100% Computing updates...             \n\nbase64: invalid input"
+}
