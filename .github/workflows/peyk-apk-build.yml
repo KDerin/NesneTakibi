@@ -53,6 +53,9 @@ jobs:
             unzip -q build-work/RobotSepetiPeyk-v2.3.0-source.zip -d build-work/project
             cd build-work/project
 
+            sed -i '1i import java.util.Properties\n' app/build.gradle.kts
+            sed -i 's/val props = java\.util\.Properties()/val props = Properties()/' app/build.gradle.kts
+
             STORE_PASSWORD="$(openssl rand -hex 16)"
             KEY_PASSWORD="$STORE_PASSWORD"
             keytool -genkeypair -v \
@@ -113,16 +116,13 @@ jobs:
           LOG_ARTIFACT_ID: ${{ steps.log_artifact.outputs.artifact-id }}
         run: |
           set -euo pipefail
-          if [ "${EXIT_CODE:-1}" = "0" ]; then STATUS="success"; else STATUS="failed"; fi
           mkdir -p peyk-build/status
           python - <<'PY'
           import json, os, pathlib
           log = pathlib.Path('build.log')
-          tail = ''
-          if log.exists():
-              tail = '\n'.join(log.read_text(errors='replace').splitlines()[-120:])
+          tail = '\n'.join(log.read_text(errors='replace').splitlines()[-120:]) if log.exists() else ''
           data = {
-              'status': os.environ.get('STATUS_OVERRIDE') or ('success' if os.environ.get('EXIT_CODE') == '0' else 'failed'),
+              'status': 'success' if os.environ.get('EXIT_CODE') == '0' else 'failed',
               'run_id': os.environ.get('GITHUB_RUN_ID'),
               'commit_sha': os.environ.get('GITHUB_SHA'),
               'apk_artifact_id': os.environ.get('APK_ARTIFACT_ID') or None,
