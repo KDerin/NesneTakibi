@@ -2,11 +2,7 @@ name: RobotSepeti Peyk APK Diagnostic Build
 
 on:
   pull_request:
-    branches:
-      - main
-    paths:
-      - "peyk-build/parts/**"
-      - ".github/workflows/peyk-apk-diagnostic.yml"
+    types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
   contents: read
@@ -46,58 +42,24 @@ jobs:
             set -euo pipefail
             yes | sdkmanager --licenses >/dev/null || true
             sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
             mkdir -p build-work/project
             cat peyk-build/parts/part-*.b64 | base64 --decode > build-work/RobotSepetiPeyk-v2.3.0-source.zip
             echo "b54d539b298c885d14d5ef39c5db74867d7fef5fcbf002be8f943e1a64511c3f  build-work/RobotSepetiPeyk-v2.3.0-source.zip" | sha256sum -c -
             unzip -q build-work/RobotSepetiPeyk-v2.3.0-source.zip -d build-work/project
             cd build-work/project
-
             STORE_PASSWORD="$(openssl rand -hex 16)"
             KEY_PASSWORD="$STORE_PASSWORD"
-            keytool -genkeypair -v \
-              -keystore robotsepeti-peyk-release.jks \
-              -storepass "$STORE_PASSWORD" \
-              -keypass "$KEY_PASSWORD" \
-              -alias robotsepeti_peyk \
-              -keyalg RSA \
-              -keysize 4096 \
-              -validity 10000 \
-              -dname "CN=RobotSepeti, OU=Peyk, O=RobotSepeti, L=Istanbul, ST=Istanbul, C=TR"
-
-            cat > keystore.properties <<EOF
-            storeFile=robotsepeti-peyk-release.jks
-            storePassword=$STORE_PASSWORD
-            keyAlias=robotsepeti_peyk
-            keyPassword=$KEY_PASSWORD
-            EOF
-
-            cat > imza-bilgileri.txt <<EOF
-            ROBOTSEPETI PEYK ANDROID IMZA BILGILERI
-            =======================================
-            Surum: 2.3.0
-            Paket: com.robotsepeti.peyk
-            Keystore: robotsepeti-peyk-release.jks
-            Alias: robotsepeti_peyk
-            Store password: $STORE_PASSWORD
-            Key password: $KEY_PASSWORD
-
-            Bu dosya ve JKS gelecekteki APK guncellemeleri icin zorunludur.
-            Guvenli ve yedekli bir yerde saklayin; halka acik depoya koymayin.
-            EOF
-
+            keytool -genkeypair -v -keystore robotsepeti-peyk-release.jks -storepass "$STORE_PASSWORD" -keypass "$KEY_PASSWORD" -alias robotsepeti_peyk -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=RobotSepeti, OU=Peyk, O=RobotSepeti, L=Istanbul, ST=Istanbul, C=TR"
+            printf 'storeFile=robotsepeti-peyk-release.jks\nstorePassword=%s\nkeyAlias=robotsepeti_peyk\nkeyPassword=%s\n' "$STORE_PASSWORD" "$KEY_PASSWORD" > keystore.properties
+            printf 'ROBOTSEPETI PEYK IMZA\nSurum: 2.3.0\nPaket: com.robotsepeti.peyk\nAlias: robotsepeti_peyk\nStore password: %s\nKey password: %s\n' "$STORE_PASSWORD" "$KEY_PASSWORD" > imza-bilgileri.txt
             gradle --no-daemon --stacktrace assembleLanRelease assembleSecureRelease
-
             mkdir -p TESLIM-APK
             cp app/build/outputs/apk/lan/release/app-lan-release.apk TESLIM-APK/RobotSepeti-Peyk-LAN-v2.3.0.apk
             cp app/build/outputs/apk/secure/release/app-secure-release.apk TESLIM-APK/RobotSepeti-Peyk-HTTPS-v2.3.0.apk
             cp robotsepeti-peyk-release.jks imza-bilgileri.txt TESLIM-APK/
-
             APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
             "$APKSIGNER" verify --verbose --print-certs TESLIM-APK/RobotSepeti-Peyk-LAN-v2.3.0.apk > TESLIM-APK/LAN-IMZA-DOGRULAMA.txt
             "$APKSIGNER" verify --verbose --print-certs TESLIM-APK/RobotSepeti-Peyk-HTTPS-v2.3.0.apk > TESLIM-APK/HTTPS-IMZA-DOGRULAMA.txt
-            keytool -printcert -jarfile TESLIM-APK/RobotSepeti-Peyk-LAN-v2.3.0.apk > TESLIM-APK/LAN-SERTIFIKA.txt
-            keytool -printcert -jarfile TESLIM-APK/RobotSepeti-Peyk-HTTPS-v2.3.0.apk > TESLIM-APK/HTTPS-SERTIFIKA.txt
             (cd TESLIM-APK && sha256sum *.apk *.jks > SHA256SUMS.txt)
           } > build.log 2>&1
           EXIT_CODE=$?
@@ -122,23 +84,14 @@ jobs:
           EXIT_CODE: ${{ steps.build.outputs.exit_code }}
           ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
         run: |
-          if [ "$EXIT_CODE" = "0" ]; then
-            STATUS="SUCCESS"
-          else
-            STATUS="FAILED"
-          fi
+          if [ "$EXIT_CODE" = "0" ]; then STATUS="SUCCESS"; else STATUS="FAILED"; fi
           {
             echo "### RobotSepeti Peyk APK Build: $STATUS"
-            echo
             echo "- Run ID: $GITHUB_RUN_ID"
             echo "- Artifact ID: ${ARTIFACT_ID:-none}"
             echo "- Commit: $GITHUB_SHA"
-            echo
-            echo '<details><summary>Build log tail</summary>'
-            echo
             echo '```text'
-            tail -n 80 build.log || true
+            tail -n 100 build.log || true
             echo '```'
-            echo '</details>'
           } > pr-comment.md
-          gh pr comment "${{ github.event.pull_request.number }}" --body-file pr-comment.md
+          gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body-file pr-comment.md
